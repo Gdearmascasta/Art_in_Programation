@@ -1,4 +1,32 @@
+!pip install PyVirtualDisplay
+!apt-get install ghostscript
 import turtle
+import os
+import importlib # Import importlib
+
+# Force reload turtle to ensure a clean state for re-runs in Colab
+importlib.reload(turtle)
+
+# Ensure /usr/bin is in PATH and set GHOSTSCRIPT_PATH for Pillow to find Ghostscript, BEFORE importing PIL
+os.environ['PATH'] = '/usr/bin:' + os.environ['PATH']
+os.environ['GHOSTSCRIPT_PATH'] = '/usr/bin/gs'
+
+# Diagnostic: Verify Ghostscript path and executability
+print(f"Current PATH: {os.environ.get('PATH')}")
+print(f"Current GHOSTSCRIPT_PATH: {os.environ.get('GHOSTSCRIPT_PATH')}")
+!which gs
+!ls -l /usr/bin/gs
+
+from pyvirtualdisplay import Display
+from PIL import Image
+import io
+import subprocess # Import subprocess for direct gs call
+
+# Set up a virtual display
+virtual_display = Display(visible=0, size=(1400, 900))
+virtual_display.start()
+os.environ['DISPLAY'] = ':0'
+
 t = turtle.Turtle()
 t.pensize(4)
 
@@ -8,7 +36,7 @@ def go(x,y):
     t.penup()
     t.goto(x,y)
     t.pendown()
-    
+
 t.pencolor("#C0392B")
 t.fillcolor("red")
 
@@ -431,3 +459,43 @@ t.circle(-172.48, 90)
 t.end_fill()
 
 t.hideturtle()
+
+# Save the turtle drawing as an image
+ts = turtle.getscreen()
+ps_file = "turtle_drawing.ps"
+ts.getcanvas().postscript(file=ps_file)
+
+# Attempt to convert PostScript to PNG using Ghostscript via subprocess
+png_file = "turtle_drawing.png"
+try:
+    # Command to convert ps to png using gs
+    gs_command = [
+        os.environ['GHOSTSCRIPT_PATH'], # Use the explicitly set path for gs
+        '-dNOPAUSE', '-dBATCH', '-sDEVICE=pngalpha', '-r300',
+        f'-sOutputFile={png_file}', ps_file
+    ]
+    subprocess.run(gs_command, check=True, capture_output=True)
+    print(f"Ghostscript conversion successful to {png_file}")
+
+    # Read the PNG data
+    with open(png_file, 'rb') as f:
+        png_data_bytes = f.read()
+
+    # Display the PNG image
+    from IPython.display import Image as DisplayImage, display as IPythonDisplayFunction
+    IPythonDisplayFunction(DisplayImage(png_data_bytes))
+
+except FileNotFoundError:
+    print("Error: Ghostscript executable 'gs' not found even via subprocess call. Check installation or PATH.")
+except subprocess.CalledProcessError as e:
+    print(f"Error during Ghostscript conversion: {e.stderr.decode()}")
+finally:
+    # Clean up virtual display
+    virtual_display.stop()
+    # Ensure turtle screen is also cleaned up gracefully
+    try:
+        turtle.Screen().bye()
+    except turtle.Terminator:
+        pass
+    except Exception as e:
+        print(f"Warning: Could not gracefully close turtle screen: {e}")
